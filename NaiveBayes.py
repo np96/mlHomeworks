@@ -1,27 +1,22 @@
+from preprocessing import keys
 import numpy as np
-from preprocessing import dicts_to_np, bag_of_words, keys
-from collections import defaultdict
 
 def multinomial_train(x, y, alpha):
     ks = keys(x)
     alpha_v = alpha * len(ks)
     xy = list(zip(x, y))
-    x_false = [e for (e, i) in xy if i == 0]
-    x_true  = [e for (e, i) in xy if i == 1]
-    res = [(k, 0) for k in ks]
-    probs = {0: dict(res), 1: dict(res)}
+    x_false = [e for (e, spam) in xy if not spam]
+    x_true  = [e for (e, spam) in xy if spam]
+    probs = {}
     sum_false = -np.log(alpha_v + sum([sum(e.values()) for e in x_false]))
     sum_true = -np.log(alpha_v + sum([sum(e.values()) for e in x_true]))
-    probs[0] = dict([(k, sum_false) for (k,v) in probs[0].items()])
-    probs[1] = dict([(k, sum_true)  for (k,v) in probs[1].items()])
-    for k in ks:
-        s = [0, 0]
-        s[0] += alpha
-        s[1] += alpha
-        for (i,d) in enumerate(x):
-            s[y[i]] += d.get(k, 0)
-        probs[0][k] += np.log(s[0])
-        probs[1][k] += np.log(s[1])
+    probs[0] = dict.fromkeys(ks, alpha)
+    probs[1] = dict.fromkeys(ks, alpha)
+    for (i, d) in enumerate(x):
+        for (k,v) in d.items():
+            probs[y[i]][k] += v
+    probs[0] = {k: np.log(v) + sum_false for (k, v) in probs[0].items() }
+    probs[1] = {k: np.log(v) + sum_true for (k, v) in probs[1].items() }
     return probs
 
 class MultinomialNaiveBayes:
@@ -50,6 +45,3 @@ class MultinomialNaiveBayes:
         for (i, x) in enumerate(X):
             res[y[i]] += self.predict(x[i]) != y[i]
         return res
-
-
-      
