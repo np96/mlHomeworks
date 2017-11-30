@@ -9,6 +9,46 @@ quadratic_kernel = lambda x: (1 - x ** 2) ** 2 * (abs(x) <= 1)
 gaussian_kernel = lambda x: (2 * np.pi) ** (-1.0 / 2) * np.exp(-x ** 2 / 2.0)
 
 
+def loo(x, y, i, gamma, h, kernel, metric):
+    n = 0
+    d = 0
+    xi = x[i]
+    hi = h[i]
+    for j, (xj, yj, gj) in enumerate(zip(x, y, gamma)):
+        if xi == xj: continue
+        k = kernel(metric(xi, xj) / hi)
+        n += yj * gj * k
+        d += gj * k
+    return n / d 
+
+def lowess(x, y, k, kernel, metric):
+    n = len(x)
+    gamma = [1.0] * n
+    h = [np.partition([metric(xi, xj) for xi in x if metric(xi, xj) > 0], k)[k] for xj in x]
+
+    for _ in range(3):
+        answers = [loo(x, y, i, gamma, h, kernel, metric) for i in range(n)]
+        errs = [abs(answers[i] - y[i]) for i in range(n)]
+        m = np.median(errs)
+        mean_change = 0
+        for i in range(n):
+            new = kernel(errs[i] / (6 * m))
+            mean_change += abs(new - gamma[i])
+            gamma[i] = new 
+        if mean_change / n < 1e-6:
+            break
+    
+    ws = []
+    for xj in x:
+        n = 0
+        d = 0
+        for xi, yi, gi, hi in zip(x, y, gamma, h):
+            k = kernel(metric(xi, xj) / hi)
+            n += yi * gi * k
+            d += gi * k
+        ws.append(n / d)
+    return np.array(ws)
+
 def kernel_smoothing(x, y, k, kernel, metric):
     h = [np.partition([metric(xi, xj) for xi in x if metric(xi, xj) > 0], k)[k] for xj in x]
     ws = []
@@ -20,31 +60,6 @@ def kernel_smoothing(x, y, k, kernel, metric):
             di += c
         ws.append(ni / di)
     return ws
-
-
-def lowess(x, y, k, kernel, metric):
-    r = int(np.ceil(0.25 * len(x)))
-    h = [np.sort(metric(x, x[i]))[r] for i in range(len(x))]
-    w = np.clip(np.abs((x[:, None] - x[None, :]) / h), 0.0, 1.0)
-    w = kernel(w)
-    yest = np.zeros(len(x))
-    delta = np.ones(len(x))
-    for iteration in range(k):
-        for i in range(len(x)):
-            weights = delta * w[:, i]
-            b = np.array([np.sum(weights * y), np.sum(weights * y * x)])
-            A = np.array([[np.sum(weights), np.sum(weights * x)],
-                          [np.sum(weights * x), np.sum(weights * x * x)]])
-            beta = linalg.solve(A, b)
-            yest[i] = beta[0] + beta[1] * x[i]
-
-        residuals = y - yest
-        s = np.median(np.abs(residuals))
-        delta = np.clip(residuals / (6.0 * s), -1, 1)
-        delta = kernel(delta)
-
-    return yest
-
 
 class NonParametricRegression:
     def __init__(self,
